@@ -2,6 +2,21 @@
  * Semantic search engine for Smart Connections
  */
 import { findNearestNeighbors } from './embedding-utils.js';
+// Lazy-loaded embedding pipeline for query encoding
+let _embeddingPipeline = null;
+let _pipelineLoading = null;
+async function getEmbeddingPipeline() {
+    if (_embeddingPipeline)
+        return _embeddingPipeline;
+    if (_pipelineLoading)
+        return _pipelineLoading;
+    _pipelineLoading = (async () => {
+        const { pipeline } = await import('@huggingface/transformers');
+        _embeddingPipeline = await pipeline('feature-extraction', 'TaylorAI/bge-micro-v2', { dtype: 'fp32' });
+        return _embeddingPipeline;
+    })();
+    return _pipelineLoading;
+}
 export class SearchEngine {
     loader;
     embeddingModelKey;
@@ -114,40 +129,18 @@ export class SearchEngine {
         };
     }
     /**
-     * Search notes by content similarity
+     * Search notes by semantic similarity to a query string.
+     * Uses the BGE-micro-v2 model (same as Smart Connections) to encode
+     * the query into a vector, then finds nearest neighbors via cosine similarity.
      */
-    searchByQuery(queryText, limit = 10, threshold = 0.5) {
-        // For now, we'll do a simple keyword match since we don't have
-        // a way to generate embeddings for arbitrary text without the model.
-        // In a full implementation, you'd call the embedding model here.
-        const results = [];
-        const queryLower = queryText.toLowerCase();
-        for (const [path, source] of this.loader.getSources()) {
-            try {
-                const content = this.loader.readNoteContent(path).toLowerCase();
-                // Simple relevance scoring based on keyword matches
-                const matches = (content.match(new RegExp(queryLower, 'gi')) || []).length;
-                if (matches > 0) {
-                    // Normalize score (this is a crude approximation)
-                    const score = Math.min(matches / 10, 1.0);
-                    if (score >= threshold) {
-                        results.push({
-                            path,
-                            similarity: score,
-                            blocks: Object.keys(source.blocks || {})
-                        });
-                    }
-                }
-            }
-            catch (error) {
-                // Skip notes that can't be read
-                continue;
-            }
-        }
-        // Sort by similarity and limit
-        return results
-            .sort((a, b) => b.similarity - a.similarity)
-            .slice(0, limit);
+    async searchByQuery(queryText, limit = 10, threshold = 0.5) {
+        // Load the embedding model (lazy — first call downloads/loads, subsequent calls reuse)
+        const embedder = await getEmbeddingPipeline();
+        // Encode the query text into an embedding vector
+        const output = await embedder(queryText, { pooling: 'mean', normalize: true });
+        const queryVec = Array.from(output.data);
+        // Delegate to the existing vector-based neighbor search
+        return this.getEmbeddingNeighbors(queryVec, limit, threshold);
     }
     /**
      * Get note content with matched blocks highlighted

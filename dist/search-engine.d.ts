@@ -20,9 +20,11 @@ export declare class SearchEngine {
      */
     getConnectionGraph(notePath: string, depth?: number, threshold?: number, maxPerLevel?: number): ConnectionGraph;
     /**
-     * Search notes by content similarity
+     * Search notes by semantic similarity to a query string.
+     * Uses the BGE-micro-v2 model (same as Smart Connections) to encode
+     * the query into a vector, then finds nearest neighbors via cosine similarity.
      */
-    searchByQuery(queryText: string, limit?: number, threshold?: number): SimilarNote[];
+    searchByQuery(queryText: string, limit?: number, threshold?: number): Promise<SimilarNote[]>;
     /**
      * Get note content with matched blocks highlighted
      */
