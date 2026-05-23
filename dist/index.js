@@ -243,7 +243,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             case 'search_notes': {
                 const { query, limit, threshold } = SearchNotesSchema.parse(args);
-                const results = searchEngine.searchByQuery(query, limit, threshold);
+                const results = await searchEngine.searchByQuery(query, limit, threshold);
                 return {
                     content: [
                         {
@@ -310,4 +310,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error('Smart Connections MCP Server running on stdio');
+const cleanExit = (reason) => {
+    console.error(`Smart Connections MCP Server shutting down cleanly (${reason})`);
+    process.exit(0);
+};
+process.stdin.on('end', () => cleanExit('stdin end'));
+process.stdin.on('close', () => cleanExit('stdin close'));
+process.on('SIGINT', () => cleanExit('SIGINT'));
+process.on('SIGTERM', () => cleanExit('SIGTERM'));
+process.on('uncaughtException', (err) => {
+    if (err && (err.code === 'EPIPE' || err.code === 'EOF')) {
+        cleanExit(`uncaughtException ${err.code}`);
+    }
+    else {
+        console.error('uncaughtException:', err);
+        process.exit(1);
+    }
+});
 //# sourceMappingURL=index.js.map
